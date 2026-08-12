@@ -1,0 +1,494 @@
+/* Story Notes — theme-aware styles.
+   Follows SillyTavern's active theme through its CSS variables (with fallbacks),
+   so the panel matches Character Visual / Character Thoughts / Relationship
+   Memory Tracker without hardcoding a single colour.
+
+   Signature element: each note sits behind a soft accent bar on the left —
+   a margin note in a book, which is what these actually are.
+
+   --sn-top-gap keeps the header clear of floating browser toolbars on tablets.
+   It must match DRAG_TOP_MARGIN in index.js: the JS value protects dragged
+   positions, this one protects the default position. */
+
+#sn-panel,
+#sn-button {
+    --sn-bg: var(--SmartThemeBlurTintColor, rgba(22, 23, 25, 0.96));
+    --sn-text: var(--SmartThemeBodyColor, #eeeae3);
+    --sn-accent: var(--SmartThemeQuoteColor, #c58a5c);
+    --sn-shadow: rgba(0, 0, 0, 0.48);
+    --sn-top-gap: 50px;
+
+    --sn-border: color-mix(in srgb, var(--sn-accent) 42%, transparent);
+    --sn-soft-border: color-mix(in srgb, var(--sn-text) 19%, transparent);
+    --sn-layer-1: color-mix(in srgb, var(--sn-bg), var(--sn-text) 6%);
+    --sn-layer-2: color-mix(in srgb, var(--sn-bg), var(--sn-text) 12%);
+    --sn-muted: color-mix(in srgb, var(--sn-text) 62%, transparent);
+    --sn-danger: #b9504a;
+
+    font-family: var(--mainFontFamily, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+}
+
+/* ------------------------------- the panel ------------------------------- */
+
+#sn-panel {
+    position: fixed;
+    right: 18px;
+    bottom: 188px;
+    width: 380px;
+    height: min(560px, calc(100vh - 188px - var(--sn-top-gap)));
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+    color: var(--sn-text);
+    background: var(--sn-bg);
+    border: 1px solid var(--sn-border);
+    border-radius: 14px;
+    box-shadow: 0 16px 50px var(--sn-shadow);
+    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength, 10) * 1px));
+}
+
+#sn-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 10px 9px 14px;
+    background: var(--sn-layer-1);
+    border-bottom: 1px solid var(--sn-border);
+    cursor: move;
+    user-select: none;
+}
+
+#sn-brand {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+#sn-brand > i {
+    color: var(--sn-accent);
+    font-size: 13px;
+}
+
+#sn-title {
+    color: var(--sn-accent);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+#sn-title-count {
+    color: var(--sn-muted);
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+#sn-header-actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 5px;
+}
+
+#sn-header-actions button {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--sn-soft-border);
+    border-radius: 9px;
+    color: var(--sn-text);
+    background: var(--sn-layer-2);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: 140ms ease;
+}
+
+#sn-header-actions button:hover {
+    color: var(--sn-accent);
+    border-color: var(--sn-border);
+    background: color-mix(in srgb, var(--sn-layer-2), var(--sn-accent) 11%);
+}
+
+#sn-close {
+    font-size: 16px !important;
+    line-height: 1;
+}
+
+/* -------------------------------- search -------------------------------- */
+
+#sn-searchbar {
+    position: relative;
+    flex: 0 0 auto;
+    padding: 8px 10px 4px;
+}
+
+#sn-searchbar > i {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-40%);
+    color: var(--sn-muted);
+    font-size: 10px;
+    pointer-events: none;
+}
+
+#sn-panel input[type="search"] {
+    width: 100%;
+    min-height: 32px;
+    box-sizing: border-box;
+    padding: 5px 8px 5px 28px;
+    border: 1px solid var(--sn-soft-border);
+    border-radius: 8px;
+    outline: none;
+    color: var(--sn-text);
+    background: var(--sn-bg);
+    font: inherit;
+    font-size: 12px;
+}
+
+#sn-panel input[type="search"]:focus {
+    border-color: var(--sn-border);
+}
+
+/* --------------------------------- body --------------------------------- */
+
+#sn-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 8px 10px 10px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-color: color-mix(in srgb, var(--sn-accent) 55%, transparent) transparent;
+}
+
+/* Signature: a note is a margin note — accent bar on the left, quiet card
+   around it. Disabled notes lose the bar's colour, not their readability. */
+.sn-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 9px 9px 11px;
+    margin-bottom: 7px;
+    border: 1px solid var(--sn-soft-border);
+    border-left: 2px solid color-mix(in srgb, var(--sn-accent) 70%, transparent);
+    border-radius: 4px 10px 10px 4px;
+    background: var(--sn-layer-1);
+    transition: border-color 140ms ease, opacity 140ms ease;
+}
+
+.sn-card:hover {
+    border-color: var(--sn-border);
+    border-left-color: var(--sn-accent);
+}
+
+.sn-card.sn-off {
+    border-left-color: var(--sn-soft-border);
+    opacity: 0.55;
+}
+
+.sn-card-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.sn-card-actions {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sn-icon {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    color: var(--sn-muted);
+    background: transparent;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+    transition: 140ms ease;
+}
+
+.sn-icon:hover {
+    color: var(--sn-accent);
+    border-color: var(--sn-soft-border);
+    background: var(--sn-layer-2);
+}
+
+.sn-icon-danger:hover {
+    color: #fff;
+    border-color: color-mix(in srgb, var(--sn-danger) 55%, transparent);
+    background: color-mix(in srgb, var(--sn-danger) 55%, transparent);
+}
+
+/* -------------------------------- editor -------------------------------- */
+
+.sn-editor {
+    padding: 9px;
+    margin-bottom: 8px;
+    border: 1px solid var(--sn-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--sn-layer-1), var(--sn-accent) 4%);
+}
+
+#sn-panel textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 8px;
+    border: 1px solid var(--sn-soft-border);
+    border-radius: 8px;
+    outline: none;
+    resize: vertical;
+    color: var(--sn-text);
+    background: var(--sn-bg);
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+#sn-panel textarea:focus {
+    border-color: var(--sn-border);
+}
+
+#sn-panel textarea::placeholder {
+    color: var(--sn-muted);
+}
+
+.sn-editor-actions,
+.sn-set-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.sn-primary,
+.sn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 6px 11px;
+    box-sizing: border-box;
+    border-radius: 9px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    transition: 140ms ease;
+}
+
+.sn-primary {
+    flex: 1;
+    border: 1px solid color-mix(in srgb, var(--sn-accent) 74%, transparent);
+    color: #fff;
+    background: color-mix(in srgb, var(--sn-accent), var(--sn-bg) 22%);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.38);
+}
+
+.sn-primary:hover {
+    background: color-mix(in srgb, var(--sn-accent), var(--sn-text) 11%);
+}
+
+.sn-secondary {
+    border: 1px solid var(--sn-soft-border);
+    color: var(--sn-text);
+    background: var(--sn-layer-2);
+}
+
+.sn-secondary:hover {
+    color: var(--sn-accent);
+    border-color: var(--sn-border);
+    background: color-mix(in srgb, var(--sn-layer-2), var(--sn-accent) 9%);
+}
+
+.sn-danger-text:hover {
+    color: #fff;
+    border-color: color-mix(in srgb, var(--sn-danger) 55%, transparent);
+    background: color-mix(in srgb, var(--sn-danger) 55%, transparent);
+}
+
+/* ------------------------------ empty state ------------------------------ */
+
+.sn-empty {
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px;
+    color: var(--sn-muted);
+    text-align: center;
+}
+
+.sn-empty > i {
+    color: color-mix(in srgb, var(--sn-accent) 55%, transparent);
+    font-size: 30px;
+}
+
+.sn-empty p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+/* ------------------------------- settings ------------------------------- */
+
+.sn-set-row {
+    margin-bottom: 14px;
+}
+
+.sn-set-label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--sn-accent);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+#sn-panel select {
+    width: 100%;
+    min-height: 32px;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    border: 1px solid var(--sn-soft-border);
+    border-radius: 8px;
+    outline: none;
+    color: var(--sn-text);
+    background: var(--sn-bg);
+    font: inherit;
+    font-size: 12px;
+}
+
+.sn-hint {
+    margin-top: 5px;
+    color: var(--sn-muted);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+/* ------------------------------ resize grip ------------------------------ */
+
+#sn-resize {
+    flex: 0 0 auto;
+    height: 12px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: ns-resize;
+    touch-action: none;
+    background: var(--sn-bg);
+}
+
+#sn-resize::before {
+    content: '';
+    width: 42px;
+    height: 3px;
+    border-radius: 3px;
+    background: currentColor;
+    opacity: 0.25;
+    transition: opacity 0.2s ease;
+}
+
+#sn-panel:hover #sn-resize::before,
+#sn-panel.sn-resizing #sn-resize::before {
+    opacity: 0.6;
+}
+
+#sn-panel.sn-resizing {
+    user-select: none;
+}
+
+/* -------------------------------- actions -------------------------------- */
+
+#sn-actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--sn-soft-border);
+    background: var(--sn-layer-1);
+}
+
+#sn-actions .sn-secondary {
+    flex: 1;
+}
+
+#sn-clear {
+    flex: 0 0 38px !important;
+}
+
+/* --------------------------- the floating button --------------------------- */
+
+#sn-button {
+    position: fixed;
+    right: 18px;
+    bottom: 188px;
+    z-index: 10001;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--sn-accent) 70%, transparent);
+    border-radius: 50%;
+    color: #fff;
+    background: color-mix(in srgb, var(--sn-accent), var(--sn-bg) 18%);
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    font-size: 16px;
+    touch-action: none;
+    transition: 140ms ease;
+}
+
+#sn-button:hover {
+    background: color-mix(in srgb, var(--sn-accent), var(--sn-text) 11%);
+}
+
+/* --------------------------------- mobile --------------------------------- */
+
+@media (max-width: 600px) {
+    #sn-button {
+        right: 12px !important;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 148px) !important;
+        z-index: 2147483647 !important;
+    }
+
+    #sn-panel {
+        left: 8px !important;
+        right: 8px !important;
+        top: calc(env(safe-area-inset-top, 0px) + var(--sn-top-gap)) !important;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 104px) !important;
+        width: auto !important;
+        height: auto !important;
+        z-index: 2147483646 !important;
+    }
+
+    #sn-resize {
+        display: none;
+    }
+}
