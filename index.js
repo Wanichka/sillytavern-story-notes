@@ -1,5 +1,13 @@
-// Story Notes v0.1.0
+// Story Notes v0.1.1
 // A small always-on fact book for one chat.
+//
+// v0.1.1: UI language switch (Русский / English) and a neutral editor
+//   placeholder. Every visible string, tooltip and confirm dialog goes through
+//   t(); the language applies the moment it is picked, without the Save button,
+//   because a language you cannot read is a bad place to hunt for a button.
+//   The block preamble is NOT translated — it is prompt text aimed at the
+//   model, not at the reader, and English instructions are the safer default
+//   across models. It stays editable, so writing it in Russian is one paste.
 //
 // WHAT IT IS: notes you write by hand ("the password is X", "Kid gave her a
 // mechanical toad") that are injected into every request, so the model cannot
@@ -50,6 +58,105 @@ function log(...args) {
     console.log('[Story Notes]', ...args);
 }
 
+/* ----------------------------- localization ----------------------------- */
+
+const STRINGS = {
+    ru: {
+        panelTitle: 'Story Notes',
+        buttonTitle: 'Story Notes',
+
+        addNote: 'Новая запись',
+        settings: 'Настройки',
+        close: 'Закрыть',
+        searchPlaceholder: 'Поиск по записям',
+
+        toggleOn: 'В промпте — выключить',
+        toggleOff: 'Выключена — включить',
+        edit: 'Изменить',
+        delete: 'Удалить',
+
+        editorPlaceholder: 'Факт, который должен остаться до конца истории',
+        add: 'Добавить',
+        save: 'Сохранить',
+        cancel: 'Отмена',
+
+        emptyBook: 'Записей пока нет. Нажми «+» и впиши то, что сюжет не должен потерять.',
+        emptySearch: 'По запросу ничего не найдено.',
+
+        language: 'Язык интерфейса',
+        position: 'Место в промпте',
+        positionHint: 'Глубина 0 ставит записи последними перед ответом. Модель начинает их отыгрывать: держи этот вариант на случай, когда факты игнорируются.',
+        positionInPrompt: 'Перед историей чата (рекомендуется)',
+        positionDepth4: 'В истории, глубина 4',
+        positionDepth0: 'В истории, глубина 0 (макс. приоритет)',
+        preamble: 'Преамбула блока',
+        preambleHint: 'Инструкция перед списком: запрещает пересказывать записи и тянуть сцену к ним. Уходит в промпт, поэтому написана для модели, а не для чтения.',
+        resetPreamble: 'Сбросить преамбулу',
+
+        export: 'Экспорт',
+        import: 'Импорт',
+        clearAll: 'Удалить все записи этого чата',
+        resizeHint: 'Потяни, чтобы изменить высоту; двойной клик — сброс',
+
+        confirmDelete: (preview) => `Удалить запись?\n\n${preview}`,
+        confirmClear: 'Удалить все записи этого чата?',
+        exportEmpty: 'Нечего экспортировать: записей нет.',
+        importUnreadable: 'Не удалось прочитать файл: это не похоже на экспорт Story Notes.',
+        importEmpty: 'В файле нет записей.',
+        importReplace: (incoming, existing) => `В файле ${incoming} записей, в этом чате уже ${existing}.\n\nOK — заменить всё, Отмена — добавить к существующим.`,
+    },
+    en: {
+        panelTitle: 'Story Notes',
+        buttonTitle: 'Story Notes',
+
+        addNote: 'New note',
+        settings: 'Settings',
+        close: 'Close',
+        searchPlaceholder: 'Search notes',
+
+        toggleOn: 'In the prompt — disable',
+        toggleOff: 'Disabled — enable',
+        edit: 'Edit',
+        delete: 'Delete',
+
+        editorPlaceholder: 'A fact that has to survive to the end of the story',
+        add: 'Add',
+        save: 'Save',
+        cancel: 'Cancel',
+
+        emptyBook: 'No notes yet. Press "+" and write down what the story must not lose.',
+        emptySearch: 'Nothing matches that search.',
+
+        language: 'Interface language',
+        position: 'Position in the prompt',
+        positionHint: 'Depth 0 puts the notes last, right before the reply. The model starts performing them: keep this for the case where facts are being ignored.',
+        positionInPrompt: 'Before the chat history (recommended)',
+        positionDepth4: 'In the history, depth 4',
+        positionDepth0: 'In the history, depth 0 (highest priority)',
+        preamble: 'Block preamble',
+        preambleHint: 'The instruction above the list: it forbids restating the notes and steering the scene toward them. This goes into the prompt, so it is written for the model rather than for reading.',
+        resetPreamble: 'Reset preamble',
+
+        export: 'Export',
+        import: 'Import',
+        clearAll: 'Delete every note in this chat',
+        resizeHint: 'Drag to change the height, double-click to reset',
+
+        confirmDelete: (preview) => `Delete this note?\n\n${preview}`,
+        confirmClear: 'Delete every note in this chat?',
+        exportEmpty: 'Nothing to export: there are no notes.',
+        importUnreadable: 'Could not read the file: it does not look like a Story Notes export.',
+        importEmpty: 'The file contains no notes.',
+        importReplace: (incoming, existing) => `The file has ${incoming} notes, this chat already has ${existing}.\n\nOK — replace everything, Cancel — add to the existing ones.`,
+    },
+};
+
+function t(key, ...args) {
+    const lang = getSettings().lang;
+    const value = STRINGS[lang]?.[key] ?? STRINGS.en[key] ?? key;
+    return typeof value === 'function' ? value(...args) : value;
+}
+
 /* ------------------------------- settings ------------------------------- */
 
 // The preamble is the anti-slop layer. A bare list of facts reads as a to-do
@@ -63,12 +170,13 @@ const DEFAULT_PREAMBLE = [
 ].join('\n');
 
 const DEFAULT_SETTINGS = {
+    lang: 'ru',
     position: 'in_prompt',
     preamble: DEFAULT_PREAMBLE,
 };
 
-// Settings are global (not per chat): they describe how the block is delivered,
-// not what is in it.
+// Settings are global (not per chat): they describe how the block is delivered
+// and how the panel is labelled, not what is in the book.
 function getSettings() {
     try {
         const raw = localStorage.getItem(LS_SETTINGS_KEY);
@@ -78,6 +186,7 @@ function getSettings() {
         if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_SETTINGS };
 
         return {
+            lang: STRINGS[parsed.lang] ? parsed.lang : DEFAULT_SETTINGS.lang,
             position: typeof parsed.position === 'string' ? parsed.position : DEFAULT_SETTINGS.position,
             preamble: typeof parsed.preamble === 'string' ? parsed.preamble : DEFAULT_SETTINGS.preamble,
         };
@@ -359,10 +468,10 @@ let showSettings = false;
 function editorHtml(value, saveLabel) {
     return `
         <div class="sn-editor">
-            <textarea class="sn-editor-input" rows="4" placeholder="Пароль от секретной комнаты: «Пауки не входят дважды»">${escapeHtml(value)}</textarea>
+            <textarea class="sn-editor-input" rows="4" placeholder="${escapeHtml(t('editorPlaceholder'))}">${escapeHtml(value)}</textarea>
             <div class="sn-editor-actions">
-                <button type="button" class="sn-primary" data-sn-save><i class="fa-solid fa-check"></i> ${saveLabel}</button>
-                <button type="button" class="sn-secondary" data-sn-cancel>Отмена</button>
+                <button type="button" class="sn-primary" data-sn-save><i class="fa-solid fa-check"></i> ${escapeHtml(saveLabel)}</button>
+                <button type="button" class="sn-secondary" data-sn-cancel>${escapeHtml(t('cancel'))}</button>
             </div>
         </div>
     `;
@@ -371,15 +480,15 @@ function editorHtml(value, saveLabel) {
 function noteCardHtml(note) {
     const off = note.enabled ? '' : ' sn-off';
     const toggleIcon = note.enabled ? 'fa-eye' : 'fa-eye-slash';
-    const toggleTitle = note.enabled ? 'В промпте — выключить' : 'Выключена — включить';
+    const toggleTitle = escapeHtml(note.enabled ? t('toggleOn') : t('toggleOff'));
 
     return `
         <div class="sn-card${off}" data-sn-id="${escapeHtml(note.id)}">
             <div class="sn-card-text">${escapeHtml(note.text)}</div>
             <div class="sn-card-actions">
                 <button type="button" class="sn-icon" data-sn-toggle title="${toggleTitle}"><i class="fa-solid ${toggleIcon}"></i></button>
-                <button type="button" class="sn-icon" data-sn-edit title="Изменить"><i class="fa-solid fa-pen"></i></button>
-                <button type="button" class="sn-icon sn-icon-danger" data-sn-delete title="Удалить"><i class="fa-solid fa-trash"></i></button>
+                <button type="button" class="sn-icon" data-sn-edit title="${escapeHtml(t('edit'))}"><i class="fa-solid fa-pen"></i></button>
+                <button type="button" class="sn-icon sn-icon-danger" data-sn-delete title="${escapeHtml(t('delete'))}"><i class="fa-solid fa-trash"></i></button>
             </div>
         </div>
     `;
@@ -388,33 +497,77 @@ function noteCardHtml(note) {
 function settingsHtml() {
     const settings = getSettings();
 
-    const options = [
-        ['in_prompt', 'Перед историей чата (рекомендуется)'],
-        ['depth_4', 'В истории, глубина 4'],
-        ['depth_0', 'В истории, глубина 0 (макс. приоритет)'],
+    const langOptions = [
+        ['ru', 'Русский'],
+        ['en', 'English'],
+    ].map(([value, label]) => {
+        const selected = settings.lang === value ? ' selected' : '';
+        return `<option value="${value}"${selected}>${label}</option>`;
+    }).join('');
+
+    const positionOptions = [
+        ['in_prompt', t('positionInPrompt')],
+        ['depth_4', t('positionDepth4')],
+        ['depth_0', t('positionDepth0')],
     ].map(([value, label]) => {
         const selected = settings.position === value ? ' selected' : '';
-        return `<option value="${value}"${selected}>${label}</option>`;
+        return `<option value="${value}"${selected}>${escapeHtml(label)}</option>`;
     }).join('');
 
     return `
         <div class="sn-settings">
             <div class="sn-set-row">
-                <label class="sn-set-label" for="sn-position">Место в промпте</label>
-                <select id="sn-position">${options}</select>
-                <div class="sn-hint">Глубина 0 ставит записи последними перед ответом. Модель начинает их отыгрывать: держи этот вариант на случай, когда факты игнорируются.</div>
+                <label class="sn-set-label" for="sn-lang">${escapeHtml(t('language'))}</label>
+                <select id="sn-lang">${langOptions}</select>
             </div>
             <div class="sn-set-row">
-                <label class="sn-set-label" for="sn-preamble">Преамбула блока</label>
+                <label class="sn-set-label" for="sn-position">${escapeHtml(t('position'))}</label>
+                <select id="sn-position">${positionOptions}</select>
+                <div class="sn-hint">${escapeHtml(t('positionHint'))}</div>
+            </div>
+            <div class="sn-set-row">
+                <label class="sn-set-label" for="sn-preamble">${escapeHtml(t('preamble'))}</label>
                 <textarea id="sn-preamble" rows="7">${escapeHtml(settings.preamble)}</textarea>
-                <div class="sn-hint">Инструкция перед списком: запрещает пересказывать записи и тянуть сцену к ним.</div>
+                <div class="sn-hint">${escapeHtml(t('preambleHint'))}</div>
             </div>
             <div class="sn-set-actions">
-                <button type="button" class="sn-primary" id="sn-settings-save"><i class="fa-solid fa-check"></i> Сохранить</button>
-                <button type="button" class="sn-secondary" id="sn-settings-reset">Сбросить преамбулу</button>
+                <button type="button" class="sn-primary" id="sn-settings-save"><i class="fa-solid fa-check"></i> ${escapeHtml(t('save'))}</button>
+                <button type="button" class="sn-secondary" id="sn-settings-reset">${escapeHtml(t('resetPreamble'))}</button>
             </div>
         </div>
     `;
+}
+
+// Labels built once in createUi() have to follow the language too.
+function applyStaticLabels() {
+    const panel = document.querySelector('#sn-panel');
+    if (!panel) return;
+
+    const setTitle = (selector, key) => {
+        const el = panel.querySelector(selector);
+        if (el) el.title = t(key);
+    };
+
+    const button = document.querySelector('#sn-button');
+    if (button) button.title = t('buttonTitle');
+
+    const title = panel.querySelector('#sn-title');
+    if (title) title.textContent = t('panelTitle');
+
+    setTitle('#sn-add', 'addNote');
+    setTitle('#sn-settings-toggle', 'settings');
+    setTitle('#sn-close', 'close');
+    setTitle('#sn-resize', 'resizeHint');
+    setTitle('#sn-clear', 'clearAll');
+
+    const search = panel.querySelector('#sn-search');
+    if (search) search.placeholder = t('searchPlaceholder');
+
+    const exportLabel = panel.querySelector('#sn-export .sn-label');
+    if (exportLabel) exportLabel.textContent = t('export');
+
+    const importLabel = panel.querySelector('#sn-import .sn-label');
+    if (importLabel) importLabel.textContent = t('import');
 }
 
 async function updateHeader() {
@@ -438,6 +591,8 @@ function renderPanel() {
     const body = document.querySelector('#sn-body');
     if (!body) return;
 
+    applyStaticLabels();
+
     const searchBar = document.querySelector('#sn-searchbar');
 
     if (showSettings) {
@@ -459,18 +614,18 @@ function renderPanel() {
     const chunks = [];
 
     if (creating) {
-        chunks.push(editorHtml('', 'Добавить'));
+        chunks.push(editorHtml('', t('add')));
     }
 
     if (visible.length === 0 && !creating) {
-        chunks.push(notes.length === 0
-            ? `<div class="sn-empty"><i class="fa-solid fa-feather"></i><p>Записей пока нет. Нажми «+» и впиши то, что сюжет не должен потерять.</p></div>`
-            : `<div class="sn-empty"><i class="fa-solid fa-magnifying-glass"></i><p>По запросу ничего не найдено.</p></div>`);
+        const icon = notes.length === 0 ? 'fa-feather' : 'fa-magnifying-glass';
+        const message = notes.length === 0 ? t('emptyBook') : t('emptySearch');
+        chunks.push(`<div class="sn-empty"><i class="fa-solid ${icon}"></i><p>${escapeHtml(message)}</p></div>`);
     }
 
     for (const note of visible) {
         chunks.push(note.id === editingId
-            ? editorHtml(note.text, 'Сохранить')
+            ? editorHtml(note.text, t('save'))
             : noteCardHtml(note));
     }
 
@@ -522,8 +677,9 @@ function deleteNote(id, silent = false) {
     if (index === -1) return;
 
     if (!silent) {
-        const preview = notes[index].text.slice(0, 80);
-        if (!confirm(`Удалить запись?\n\n${preview}${notes[index].text.length > 80 ? '…' : ''}`)) return;
+        const text = notes[index].text;
+        const preview = text.length > 80 ? `${text.slice(0, 80)}…` : text;
+        if (!confirm(t('confirmDelete', preview))) return;
     }
 
     notes.splice(index, 1);
@@ -597,6 +753,23 @@ function wireList(body) {
 }
 
 function wireSettings(body) {
+    // Language applies immediately, without the Save button: a panel you cannot
+    // read is a bad place to go looking for one. Position and preamble still
+    // wait for Save, so a half-typed preamble is never injected.
+    body.querySelector('#sn-lang').addEventListener('change', (event) => {
+        const settings = getSettings();
+        settings.lang = event.target.value;
+
+        // Keep whatever is currently typed into the other two fields, so
+        // switching language mid-edit does not throw the edits away.
+        settings.position = body.querySelector('#sn-position').value;
+        settings.preamble = body.querySelector('#sn-preamble').value;
+
+        saveSettings(settings);
+        updatePromptInjection();
+        renderPanel();
+    });
+
     body.querySelector('#sn-settings-save').addEventListener('click', () => {
         const settings = getSettings();
         settings.position = body.querySelector('#sn-position').value;
@@ -618,7 +791,7 @@ function exportNotes() {
     const notes = getNotes();
 
     if (notes.length === 0) {
-        alert('Нечего экспортировать: записей нет.');
+        alert(t('exportEmpty'));
         return;
     }
 
@@ -653,19 +826,17 @@ function importNotes(file) {
             incoming = normalizeNotes(Array.isArray(parsed) ? parsed : parsed?.notes);
         } catch (error) {
             console.error('[Story Notes] Import failed:', error);
-            alert('Не удалось прочитать файл: это не похоже на экспорт Story Notes.');
+            alert(t('importUnreadable'));
             return;
         }
 
         if (incoming.length === 0) {
-            alert('В файле нет записей.');
+            alert(t('importEmpty'));
             return;
         }
 
         const existing = getNotes();
-        const replace = existing.length > 0 && confirm(
-            `В файле ${incoming.length} записей, в этом чате уже ${existing.length}.\n\nOK — заменить всё, Отмена — добавить к существующим.`
-        );
+        const replace = existing.length > 0 && confirm(t('importReplace', incoming.length, existing.length));
 
         // Fresh ids on import: two files exported from the same chat would
         // otherwise collide and edits would hit the wrong note.
@@ -894,7 +1065,6 @@ function createUi() {
     const button = document.createElement('button');
     button.id = 'sn-button';
     button.type = 'button';
-    button.title = 'Story Notes';
     button.innerHTML = '<i class="fa-solid fa-feather"></i>';
     document.body.appendChild(button);
 
@@ -909,20 +1079,20 @@ function createUi() {
                 <div id="sn-title-count">0/0</div>
             </div>
             <div id="sn-header-actions">
-                <button type="button" id="sn-add" title="Новая запись"><i class="fa-solid fa-plus"></i></button>
-                <button type="button" id="sn-settings-toggle" title="Настройки"><i class="fa-solid fa-gear"></i></button>
-                <button type="button" id="sn-close" title="Закрыть">×</button>
+                <button type="button" id="sn-add"><i class="fa-solid fa-plus"></i></button>
+                <button type="button" id="sn-settings-toggle"><i class="fa-solid fa-gear"></i></button>
+                <button type="button" id="sn-close">×</button>
             </div>
         </div>
         <div id="sn-searchbar">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="search" id="sn-search" placeholder="Поиск по записям" autocomplete="off">
+            <input type="search" id="sn-search" autocomplete="off">
         </div>
         <div id="sn-body"></div>
-        <div id="sn-resize" title="Потяни, чтобы изменить высоту; двойной клик — сброс"></div>
+        <div id="sn-resize"></div>
         <div id="sn-actions">
-            <button type="button" id="sn-export" class="sn-secondary"><i class="fa-solid fa-download"></i> Экспорт</button>
-            <button type="button" id="sn-import" class="sn-secondary"><i class="fa-solid fa-upload"></i> Импорт</button>
+            <button type="button" id="sn-export" class="sn-secondary"><i class="fa-solid fa-download"></i> <span class="sn-label"></span></button>
+            <button type="button" id="sn-import" class="sn-secondary"><i class="fa-solid fa-upload"></i> <span class="sn-label"></span></button>
             <button type="button" id="sn-clear" class="sn-secondary sn-danger-text"><i class="fa-solid fa-trash"></i></button>
         </div>
         <input type="file" id="sn-import-file" accept="application/json,.json" hidden>
@@ -938,6 +1108,7 @@ function createUi() {
 
     // Height first: the position clamp depends on the panel's dimensions.
     restoreHeight(panel);
+    applyStaticLabels();
 
     button.addEventListener('click', () => {
         // A drag that ends over the button also fires a click.
@@ -996,7 +1167,7 @@ function createUi() {
     });
 
     panel.querySelector('#sn-clear').addEventListener('click', () => {
-        if (!confirm('Удалить все записи этого чата?')) return;
+        if (!confirm(t('confirmClear'))) return;
 
         clearNotes();
         updatePromptInjection();
