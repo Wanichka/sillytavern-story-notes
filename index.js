@@ -41,6 +41,7 @@ import {
     extension_prompt_types,
     extension_prompt_roles,
 } from '../../../../script.js';
+import { isRoleplayDocked, registerRoleplayPanel } from './roleplay-tools-adapter.js';
 
 const LS_NOTES_KEY = 'story_notes_v1';
 const LS_SETTINGS_KEY = 'story_notes_settings_v1';
@@ -887,6 +888,7 @@ function clampToViewport(el, left, top) {
 }
 
 function applyPosition(el, left, top) {
+    if (isRoleplayDocked(el)) return;
     // Inline !important beats the fixed-position rules (and the mobile media
     // query) in style.css, so a dragged element actually moves.
     el.style.setProperty('left', `${left}px`, 'important');
@@ -896,6 +898,7 @@ function applyPosition(el, left, top) {
 }
 
 function restorePosition(el, storageKey) {
+    if (isRoleplayDocked(el)) return;
     try {
         const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
         if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
@@ -921,6 +924,7 @@ function makeDraggable(el, { storageKey, handle = el } = {}) {
     let baseTop = 0;
 
     handle.addEventListener('pointerdown', (event) => {
+        if (isRoleplayDocked(el)) return;
         const innerButton = event.target.closest('button');
         if (innerButton && innerButton !== el) return;
         if (event.button != null && event.button !== 0) return;
@@ -988,10 +992,12 @@ function clampHeight(el, height) {
 }
 
 function applyHeight(el, height) {
+    if (isRoleplayDocked(el)) return;
     el.style.setProperty('height', `${height}px`, 'important');
 }
 
 function restoreHeight(el) {
+    if (isRoleplayDocked(el)) return;
     if (isCompactViewport()) {
         el.style.removeProperty('height');
         return;
@@ -1015,6 +1021,7 @@ function makeResizable(el, grip) {
     let baseH = 0;
 
     grip.addEventListener('pointerdown', (event) => {
+        if (isRoleplayDocked(el)) return;
         if (event.button != null && event.button !== 0) return;
         if (isCompactViewport()) return;
 
@@ -1181,6 +1188,23 @@ function createUi() {
             restorePosition(panel, LS_PANEL_POS_KEY);
         }
         restorePosition(button, LS_BUTTON_POS_KEY);
+    });
+
+    registerRoleplayPanel({
+        id: 'notes', title: 'Story Notes', minHeight: 210,
+        defaultPage: { id: 'story', name: 'Сюжет' },
+        element: panel, launcher: button,
+        controls: panel.querySelector('#sn-header-actions'),
+        onShow: () => {
+            if (!panel.querySelector('#sn-body').childElementCount) renderPanel();
+        },
+        // Existing handlers update content; re-rendering on activation loses drafts.
+        onRelease: () => {
+            if (panel.style.display !== 'none') {
+                restoreHeight(panel);
+                restorePosition(panel, LS_PANEL_POS_KEY);
+            }
+        },
     });
 }
 
