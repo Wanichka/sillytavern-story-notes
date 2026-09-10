@@ -1,5 +1,29 @@
-// Story Notes v0.1.1
+// Story Notes v0.1.2
 // A small always-on fact book for one chat.
+//
+// v0.1.2: anti-slop pass. Three changes, all aimed at one failure: a note that
+//   names a physical object ("she writes on a tablet with a shark case") gets
+//   performed in every other reply, while an abstract note about the same
+//   character's parents sits quiet. An object is trivially insertable into any
+//   scene, so a model looking for a way to show it remembers reaches for the
+//   object first.
+//   1. The default preamble now says explicitly that a reply using none of the
+//      facts is a correct reply, and that objects listed here exist in the
+//      background without having to be visible. Pure prohibition ("do not
+//      restate") left the facts marked as important with no instruction about
+//      what to actually do with them.
+//   2. The block tag is <established_facts>, not <story_notes>. "Notes" reads
+//      as something the author wants read out; "established" reads as settled
+//      background.
+//   3. RECENCY GUARD (new, on by default): before every generation the last few
+//      chat messages are scanned, and any note whose keywords already appear
+//      there gets a one-line "already established" marker appended inside the
+//      block. A note that has just been used stops asking to be used again,
+//      and un-marks itself once the scene has moved on. The panel shows a
+//      marker icon on those cards so the guard is visible instead of magic.
+//   Existing installs keep their saved preamble, EXCEPT when it is still the
+//   untouched v0.1.1 default — that one is migrated to the new text, otherwise
+//   the fix would silently not apply to anyone who already ran the extension.
 //
 // v0.1.1: UI language switch (Русский / English) and a neutral editor
 //   placeholder. Every visible string, tooltip and confirm dialog goes through
@@ -52,6 +76,10 @@ const LS_BUTTON_POS_KEY = 'story_notes_button_pos';
 const METADATA_KEY = 'story_notes';
 const INJECTION_KEY = 'story_notes_injection';
 
+// The tag the model sees. Deliberately not "notes": a block called notes reads
+// as authored material that wants to be acknowledged.
+const BLOCK_TAG = 'established_facts';
+
 const DEBUG = false;
 
 function log(...args) {
@@ -90,6 +118,9 @@ const STRINGS = {
         positionInPrompt: 'Перед историей чата (рекомендуется)',
         positionDepth4: 'В истории, глубина 4',
         positionDepth0: 'В истории, глубина 0 (макс. приоритет)',
+        guard: 'Гасить уже прозвучавшие факты',
+        guardHint: 'Перед генерацией просматриваются последние сообщения. Если ключевые слова записи там уже есть, к ней в промпте дописывается пометка «уже установлено, не называй снова». Когда сцена уходит дальше, пометка сама снимается.',
+        hotBadge: 'Уже прозвучало в последних сообщениях — в промпте помечено как установленное',
         preamble: 'Преамбула блока',
         preambleHint: 'Инструкция перед списком: запрещает пересказывать записи и тянуть сцену к ним. Уходит в промпт, поэтому написана для модели, а не для чтения.',
         resetPreamble: 'Сбросить преамбулу',
@@ -134,6 +165,9 @@ const STRINGS = {
         positionInPrompt: 'Before the chat history (recommended)',
         positionDepth4: 'In the history, depth 4',
         positionDepth0: 'In the history, depth 0 (highest priority)',
+        guard: 'Mute facts that just came up',
+        guardHint: 'The last few messages are scanned before every generation. If a note\'s keywords are already there, the prompt gets an "already established, do not name it again" marker under that note. The marker clears itself once the scene moves on.',
+        hotBadge: 'Already present in the recent messages — marked as established in the prompt',
         preamble: 'Block preamble',
         preambleHint: 'The instruction above the list: it forbids restating the notes and steering the scene toward them. This goes into the prompt, so it is written for the model rather than for reading.',
         resetPreamble: 'Reset preamble',
@@ -161,18 +195,40 @@ function t(key, ...args) {
 /* ------------------------------- settings ------------------------------- */
 
 // The preamble is the anti-slop layer. A bare list of facts reads as a to-do
-// list and the model starts reporting on it, so three things have to be said
-// explicitly: this is reference, it is never displayed, and it must not steer
-// the scene. Editable, because prompt wording is model-specific.
+// list and the model starts reporting on it. Prohibition alone is not enough:
+// "do not restate this" still leaves the facts flagged as important with no
+// guidance on what to do instead, so the model finds a way to use them that is
+// technically not a restatement — it puts the object in the scene. Hence the
+// two positive permissions: a reply may use none of this, and an object listed
+// here may stay off-screen. Editable, because prompt wording is model-specific.
 const DEFAULT_PREAMBLE = [
-    'Established facts of this story, recorded by the user. Everything here is true and current unless the scene clearly changes it.',
-    'Reference material only. Never quote, list, summarize or restate this block in your reply, and never render it as an info block.',
-    'Use a fact only when the scene naturally reaches it. Do not steer the scene toward these facts and do not mention them to prove you remember them.',
+    'Background knowledge about this story, recorded by the user. Everything here is true and current unless the scene clearly changes it.',
+    '',
+    'This block answers questions the scene may raise. It is not a list of things to include, and a reply that uses none of it is normal and correct.',
+    '',
+    'Use a fact only when the scene has already arrived at it on its own. Never introduce an object, person or detail from this block in order to show that you remember it, and never quote, list, summarize or restate the block itself.',
+    '',
+    'Objects named here exist in the background. They do not have to be visible, carried, named or handled in a reply.',
+    '',
+    'If something from this block has already appeared in the recent conversation, treat it as established and do not name it again.',
 ].join('\n');
+
+// Preambles shipped as defaults by earlier versions. A saved preamble that
+// still matches one of these verbatim was never edited by the user, so it is
+// safe to upgrade — without this, the new wording would only ever reach fresh
+// installs and the change would look like it did nothing.
+const LEGACY_PREAMBLES = [
+    [
+        'Established facts of this story, recorded by the user. Everything here is true and current unless the scene clearly changes it.',
+        'Reference material only. Never quote, list, summarize or restate this block in your reply, and never render it as an info block.',
+        'Use a fact only when the scene naturally reaches it. Do not steer the scene toward these facts and do not mention them to prove you remember them.',
+    ].join('\n'),
+];
 
 const DEFAULT_SETTINGS = {
     lang: 'ru',
     position: 'in_prompt',
+    guard: true,
     preamble: DEFAULT_PREAMBLE,
 };
 
@@ -186,10 +242,13 @@ function getSettings() {
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_SETTINGS };
 
+        const savedPreamble = typeof parsed.preamble === 'string' ? parsed.preamble : DEFAULT_SETTINGS.preamble;
+
         return {
             lang: STRINGS[parsed.lang] ? parsed.lang : DEFAULT_SETTINGS.lang,
             position: typeof parsed.position === 'string' ? parsed.position : DEFAULT_SETTINGS.position,
-            preamble: typeof parsed.preamble === 'string' ? parsed.preamble : DEFAULT_SETTINGS.preamble,
+            guard: parsed.guard !== false,
+            preamble: LEGACY_PREAMBLES.includes(savedPreamble.trim()) ? DEFAULT_PREAMBLE : savedPreamble,
         };
     } catch (error) {
         console.error('[Story Notes] Failed to read settings:', error);
@@ -398,6 +457,113 @@ async function countTokens(text) {
     return estimateTokens(text);
 }
 
+/* ----------------------------- recency guard ----------------------------- */
+
+// A note that has just been used does not need to be advertised again. The
+// guard scans the tail of the chat and marks such notes inside the block, so
+// the model sees "already established" instead of a standing invitation.
+//
+// Matching is prefix-based rather than exact: Russian inflects heavily, and
+// планшет / планшета / планшетом have to count as the same word. Five shared
+// characters is the sweet spot — it catches those three, and does not fuse
+// планшет with планы (four shared characters) or акула with акварель.
+
+const GUARD_LOOKBACK = 6;      // messages scanned, newest first
+const GUARD_MIN_HITS = 2;      // occurrences before a note is considered hot
+const GUARD_PREFIX = 5;        // shared leading characters that count as a match
+const GUARD_MIN_WORD = 5;      // shorter note words are too generic to key on
+
+const GUARD_MARKER = '(Already established in the recent scene. Do not name it again unless the scene itself requires it.)';
+
+// Long enough to pass the length filter, common enough to match everything.
+const GUARD_STOPWORDS = new Set([
+    'который', 'которая', 'которые', 'которого', 'которой',
+    'потому', 'поэтому', 'всегда', 'никогда', 'иногда', 'обычно',
+    'очень', 'может', 'можно', 'нужно', 'должен', 'должна', 'должно',
+    'когда', 'после', 'перед', 'через', 'около', 'между', 'вместе',
+    'своей', 'своих', 'своего', 'своему', 'этого', 'этому', 'этой',
+    'также', 'просто', 'будет', 'была', 'были', 'быть', 'себя',
+    'ничего', 'что-то', 'кто-то', 'сейчас', 'потом', 'обычная',
+    'always', 'never', 'sometimes', 'usually', 'should', 'would',
+    'their', 'there', 'which', 'about', 'because', 'these', 'those',
+    'every', 'still', 'after', 'before', 'during', 'while', 'using',
+    'thing', 'things', 'something', 'anything', 'really',
+]);
+
+function tokenize(text) {
+    return String(text ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+function noteKeywords(text) {
+    const words = new Set();
+
+    for (const word of tokenize(text)) {
+        if (word.length < GUARD_MIN_WORD) continue;
+        if (GUARD_STOPWORDS.has(word)) continue;
+        words.add(word);
+    }
+
+    return [...words];
+}
+
+// Word -> occurrences across the scanned tail. Returns null when the chat is
+// not readable (boot, chat switch), which disables the guard for that pass
+// rather than guessing.
+function recentWordCounts() {
+    const chat = getContextSafe()?.chat;
+    if (!Array.isArray(chat) || chat.length === 0) return null;
+
+    const counts = new Map();
+    let scanned = 0;
+
+    for (let i = chat.length - 1; i >= 0 && scanned < GUARD_LOOKBACK; i--) {
+        const message = chat[i];
+        if (!message || message.is_system) continue;
+
+        scanned++;
+
+        for (const word of tokenize(message.mes)) {
+            if (word.length < GUARD_PREFIX) continue;
+            counts.set(word, (counts.get(word) || 0) + 1);
+        }
+    }
+
+    return counts;
+}
+
+function sharedPrefixLength(a, b) {
+    const limit = Math.min(a.length, b.length);
+    let i = 0;
+    while (i < limit && a[i] === b[i]) i++;
+    return i;
+}
+
+function getHotNoteIds(notes) {
+    const hot = new Set();
+    if (!getSettings().guard) return hot;
+
+    const counts = recentWordCounts();
+    if (!counts || counts.size === 0) return hot;
+
+    for (const note of notes) {
+        const keywords = noteKeywords(note.text);
+        if (keywords.length === 0) continue;
+
+        let hits = 0;
+
+        for (const [word, count] of counts) {
+            if (keywords.some((keyword) => sharedPrefixLength(keyword, word) >= GUARD_PREFIX)) {
+                hits += count;
+                if (hits >= GUARD_MIN_HITS) break;
+            }
+        }
+
+        if (hits >= GUARD_MIN_HITS) hot.add(note.id);
+    }
+
+    return hot;
+}
+
 /* ------------------------------- injection ------------------------------- */
 
 function buildNotesText() {
@@ -408,9 +574,10 @@ function buildNotesText() {
     }
 
     const settings = getSettings();
+    const hot = getHotNoteIds(notes);
     const parts = [];
 
-    parts.push('<story_notes>');
+    parts.push(`<${BLOCK_TAG}>`);
 
     if (settings.preamble.trim()) {
         parts.push(settings.preamble.trim());
@@ -421,10 +588,11 @@ function buildNotesText() {
     // so they are separated by blank lines instead of being prefixed with "-".
     notes.forEach((note, index) => {
         parts.push(note.text.trim());
+        if (hot.has(note.id)) parts.push(GUARD_MARKER);
         if (index < notes.length - 1) parts.push('');
     });
 
-    parts.push('</story_notes>');
+    parts.push(`</${BLOCK_TAG}>`);
 
     return parts.join('\n');
 }
@@ -478,15 +646,22 @@ function editorHtml(value, saveLabel) {
     `;
 }
 
-function noteCardHtml(note) {
+function noteCardHtml(note, isHot) {
     const off = note.enabled ? '' : ' sn-off';
     const toggleIcon = note.enabled ? 'fa-eye' : 'fa-eye-slash';
     const toggleTitle = escapeHtml(note.enabled ? t('toggleOn') : t('toggleOff'));
+
+    // Inline style rather than a class: style.css is shared with the rest of
+    // the set and this badge is not worth a stylesheet bump.
+    const hotBadge = isHot
+        ? `<i class="fa-solid fa-volume-xmark sn-hot" style="opacity:.5;font-size:.85em;margin-right:auto;" title="${escapeHtml(t('hotBadge'))}"></i>`
+        : '';
 
     return `
         <div class="sn-card${off}" data-sn-id="${escapeHtml(note.id)}">
             <div class="sn-card-text">${escapeHtml(note.text)}</div>
             <div class="sn-card-actions">
+                ${hotBadge}
                 <button type="button" class="sn-icon" data-sn-toggle title="${toggleTitle}"><i class="fa-solid ${toggleIcon}"></i></button>
                 <button type="button" class="sn-icon" data-sn-edit title="${escapeHtml(t('edit'))}"><i class="fa-solid fa-pen"></i></button>
                 <button type="button" class="sn-icon sn-icon-danger" data-sn-delete title="${escapeHtml(t('delete'))}"><i class="fa-solid fa-trash"></i></button>
@@ -525,6 +700,13 @@ function settingsHtml() {
                 <label class="sn-set-label" for="sn-position">${escapeHtml(t('position'))}</label>
                 <select id="sn-position">${positionOptions}</select>
                 <div class="sn-hint">${escapeHtml(t('positionHint'))}</div>
+            </div>
+            <div class="sn-set-row">
+                <label class="sn-set-label" for="sn-guard">
+                    <input type="checkbox" id="sn-guard"${settings.guard ? ' checked' : ''}>
+                    ${escapeHtml(t('guard'))}
+                </label>
+                <div class="sn-hint">${escapeHtml(t('guardHint'))}</div>
             </div>
             <div class="sn-set-row">
                 <label class="sn-set-label" for="sn-preamble">${escapeHtml(t('preamble'))}</label>
@@ -612,6 +794,10 @@ function renderPanel() {
         ? notes.filter((note) => note.text.toLowerCase().includes(query))
         : notes;
 
+    // Computed once per render over the enabled notes, so the badges match what
+    // the next generation will actually be told.
+    const hot = getHotNoteIds(notes.filter((note) => note.enabled));
+
     const chunks = [];
 
     if (creating) {
@@ -627,7 +813,7 @@ function renderPanel() {
     for (const note of visible) {
         chunks.push(note.id === editingId
             ? editorHtml(note.text, t('save'))
-            : noteCardHtml(note));
+            : noteCardHtml(note, hot.has(note.id)));
     }
 
     body.innerHTML = chunks.join('');
@@ -755,15 +941,16 @@ function wireList(body) {
 
 function wireSettings(body) {
     // Language applies immediately, without the Save button: a panel you cannot
-    // read is a bad place to go looking for one. Position and preamble still
-    // wait for Save, so a half-typed preamble is never injected.
+    // read is a bad place to go looking for one. Position, guard and preamble
+    // still wait for Save, so a half-typed preamble is never injected.
     body.querySelector('#sn-lang').addEventListener('change', (event) => {
         const settings = getSettings();
         settings.lang = event.target.value;
 
-        // Keep whatever is currently typed into the other two fields, so
-        // switching language mid-edit does not throw the edits away.
+        // Keep whatever is currently set in the other fields, so switching
+        // language mid-edit does not throw the edits away.
         settings.position = body.querySelector('#sn-position').value;
+        settings.guard = body.querySelector('#sn-guard').checked;
         settings.preamble = body.querySelector('#sn-preamble').value;
 
         saveSettings(settings);
@@ -774,6 +961,7 @@ function wireSettings(body) {
     body.querySelector('#sn-settings-save').addEventListener('click', () => {
         const settings = getSettings();
         settings.position = body.querySelector('#sn-position').value;
+        settings.guard = body.querySelector('#sn-guard').checked;
         settings.preamble = body.querySelector('#sn-preamble').value;
         saveSettings(settings);
         updatePromptInjection();
@@ -1225,6 +1413,16 @@ function handleChatChanged() {
     updatePromptInjection();
 }
 
+// The guard reads the chat tail, so a rendered badge goes stale as soon as a
+// message lands. Cheap enough to just re-render when the panel is open.
+function refreshHotBadges() {
+    const panel = document.querySelector('#sn-panel');
+    if (!panel || panel.style.display === 'none') return;
+    if (showSettings || creating || editingId) return;   // never interrupt an editor
+
+    renderPanel();
+}
+
 // Event names differ between SillyTavern versions, and eventSource.on(undefined)
 // throws, which would abort the rest of init().
 function onEvent(label, handler) {
@@ -1245,9 +1443,14 @@ function init() {
     onEvent('CHAT_CHANGED', handleChatChanged);
 
     // Rebuilt right before the prompt is assembled, so what goes out is always
-    // the current book — never a stale copy of a deleted note.
+    // the current book — never a stale copy of a deleted note, and with the
+    // recency guard measured against the newest messages.
     onEvent('GENERATE_BEFORE_COMBINE_PROMPTS', updatePromptInjection);
     onEvent('GENERATION_STARTED', updatePromptInjection);
+
+    onEvent('MESSAGE_RECEIVED', refreshHotBadges);
+    onEvent('MESSAGE_SWIPED', refreshHotBadges);
+    onEvent('MESSAGE_DELETED', refreshHotBadges);
 
     log('Extension loaded.');
 }
