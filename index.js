@@ -1,5 +1,13 @@
-// Story Notes v0.1.2
+// Story Notes v0.1.3
 // A small always-on fact book for one chat.
+//
+// v0.1.3: two small corrections to the recency guard, no new controls.
+//   - The guard now mutes a note on the FIRST mention in the scanned window,
+//     not the second. A fact that has just been said is in the chat history
+//     anyway; the marker only stops it from being said again.
+//   - Character and persona names are excluded from the guard's keywords.
+//     Without that, "Alisa writes her notes on a tablet" matched on "Alisa",
+//     which is in nearly every message, and the note sat permanently marked.
 //
 // v0.1.2: anti-slop pass. Three changes, all aimed at one failure: a note that
 //   names a physical object ("she writes on a tablet with a shark case") gets
@@ -469,7 +477,7 @@ async function countTokens(text) {
 // планшет with планы (four shared characters) or акула with акварель.
 
 const GUARD_LOOKBACK = 6;      // messages scanned, newest first
-const GUARD_MIN_HITS = 2;      // occurrences before a note is considered hot
+const GUARD_MIN_HITS = 1;      // one mention is enough: the fact is in the history now
 const GUARD_PREFIX = 5;        // shared leading characters that count as a match
 const GUARD_MIN_WORD = 5;      // shorter note words are too generic to key on
 
@@ -964,10 +972,6 @@ function wireList(body) {
             renderPanel();
         });
 
-        card.querySelector('[data-sn-delete]').addEventListener('click', () => {
-            deleteNote(id);
-            renderPanel();
-        });
     });
 }
 
@@ -1450,7 +1454,6 @@ function handleChatChanged() {
 function refreshHotBadges() {
     const panel = document.querySelector('#sn-panel');
     if (!panel || panel.style.display === 'none') return;
-    if (showSettings || creating || editingId) return;   // never interrupt an editor
 
     renderPanel();
 }
