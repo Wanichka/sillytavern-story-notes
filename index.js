@@ -494,12 +494,40 @@ function tokenize(text) {
     return String(text ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
 }
 
-function noteKeywords(text) {
+// Character and persona names are in almost every message, so a note that
+// names its own subject ("Alisa writes her notes on a tablet") would match on
+// the name alone and sit permanently marked as established. Collected per chat
+// instead of guessed: whatever this chat calls its participants.
+function chatNameWords() {
+    const context = getContextSafe();
+    const names = new Set();
+
+    const add = (value) => {
+        for (const word of tokenize(value)) names.add(word);
+    };
+
+    add(context?.name1);
+    add(context?.name2);
+
+    // Group chats and swapped personas leave older names on the messages.
+    const chat = context?.chat;
+
+    if (Array.isArray(chat)) {
+        for (let i = chat.length - 1, scanned = 0; i >= 0 && scanned < 40; i--, scanned++) {
+            add(chat[i]?.name);
+        }
+    }
+
+    return names;
+}
+
+function noteKeywords(text, exclude) {
     const words = new Set();
 
     for (const word of tokenize(text)) {
         if (word.length < GUARD_MIN_WORD) continue;
         if (GUARD_STOPWORDS.has(word)) continue;
+        if (exclude?.has(word)) continue;
         words.add(word);
     }
 
@@ -545,8 +573,12 @@ function getHotNoteIds(notes) {
     const counts = recentWordCounts();
     if (!counts || counts.size === 0) return hot;
 
+    const names = chatNameWords();
+
     for (const note of notes) {
-        const keywords = noteKeywords(note.text);
+        // A note made only of names has nothing distinctive left to key on, so
+        // it is never marked rather than always marked.
+        const keywords = noteKeywords(note.text, names);
         if (keywords.length === 0) continue;
 
         let hits = 0;
