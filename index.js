@@ -972,6 +972,10 @@ function wireList(body) {
             renderPanel();
         });
 
+        card.querySelector('[data-sn-delete]').addEventListener('click', () => {
+            deleteNote(id);
+            renderPanel();
+        });
     });
 }
 
