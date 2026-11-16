@@ -4,6 +4,8 @@ A small book of facts for one chat. You write short notes by hand — passwords,
 
 Not a summarizer and not a lorebook: no keywords, no triggers, no activation logic. A note is either enabled and always in the prompt, or disabled and sitting quietly in the panel.
 
+![Story Notes panel showing the search field and two active notes for a SillyTavern chat](docs/screenshots/story-notes.png)
+
 ```
 The password to the fourth-floor hideout: "Spiders do not enter twice."
 Alice named their little company the Order of the Soft Pillows.
